@@ -7,7 +7,23 @@ import torch
 from torch import nn
 
 from .entropy_models import BitEstimator, GaussianEncoder, EntropyCoder
-from ..utils.stream_helper import get_padding_size
+
+
+
+
+
+def get_padding_size(height, width, p=64):
+    new_h = (height + p - 1) // p * p
+    new_w = (width + p - 1) // p * p
+    # padding_left = (new_w - width) // 2
+    padding_left = 0
+    padding_right = new_w - width - padding_left
+    # padding_top = (new_h - height) // 2
+    padding_top = 0
+    padding_bottom = new_h - height - padding_top
+    return padding_left, padding_right, padding_top, padding_bottom
+
+
 
 
 class CompressionModel(nn.Module):

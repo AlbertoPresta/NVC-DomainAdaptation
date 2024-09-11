@@ -9,7 +9,60 @@ from .common_model import CompressionModel
 from .layers import conv3x3, DepthConvBlock2, DepthConvBlock3, DepthConvBlock4, \
     ResidualBlockUpsample, ResidualBlockWithStride2
 from .video_net import UNet
-from ..utils.stream_helper import write_ip, get_downsampled_shape
+
+
+
+import enum
+import struct
+
+class NalType(enum.IntEnum):
+    NAL_SPS = 0
+    NAL_I = 1
+    NAL_P = 2
+    NAL_Ps = 3
+
+def write_uchars(fd, values, fmt=">{:d}B"):
+    fd.write(struct.pack(fmt.format(len(values)), *values))
+    return len(values)
+
+
+def write_bytes(fd, values, fmt=">{:d}s"):
+    if len(values) == 0:
+        return 0
+    fd.write(struct.pack(fmt.format(len(values)), values))
+    return len(values)
+
+def write_uint_adaptive(f, a):
+    if a <= 32767:
+        a0 = a & 0xff
+        a1 = a >> 8
+        write_uchars(f, (a1, a0))
+        return 2
+
+    assert a < (1 << 30)
+    a0 = a & 0xff
+    a1 = (a >> 8) & 0xff
+    a2 = (a >> 16) & 0xff
+    a3 = (a >> 24) & 0xff
+    a3 = a3 | (1 << 7)
+    write_uchars(f, (a3, a2, a1, a0))
+    return 4
+
+def get_downsampled_shape(height, width, p):
+    new_h = (height + p - 1) // p * p
+    new_w = (width + p - 1) // p * p
+    return int(new_h / p + 0.5), int(new_w / p + 0.5)
+
+
+def write_ip(f, is_i_frame, sps_id, bit_stream):
+    written = 0
+    flag = (int(NalType.NAL_I if is_i_frame else NalType.NAL_P) << 4) + sps_id
+    written += write_uchars(f, (flag,))
+    # we write all the streams in the same file, thus, we need to write the per-frame length
+    # if packed independently, we do not need to write it
+    written += write_uint_adaptive(f, len(bit_stream))
+    written += write_bytes(f, bit_stream)
+    return written
 
 
 class IntraEncoder(nn.Module):
